@@ -1,400 +1,514 @@
-// State
+// ── State ──────────────────────────────────────────────────────────────
 let currentUserId = null;
 let currentTeamId = null;
+let currentTeamName = null;
 
-// DOM Elements
-const screens = {
-  login: document.getElementById("login-screen"),
-  dashboard: document.getElementById("dashboard-screen"),
+// ── Selectors ─────────────────────────────────────────────────────────
+const $ = (id) => document.getElementById(id);
+const screens = { login: $("login-screen"), dashboard: $("dashboard-screen") };
+
+const el = {
+  loginForm: $("login-form"),
+  userIdInput: $("user-id-input"),
+  displayUserId: $("display-user-id"),
+  avatarInitial: $("avatar-initial"),
+  logoutBtn: $("logout-btn"),
+
+  teamsList: $("teams-list"),
+  showCreateTeamBtn: $("show-create-team-btn"),
+  cancelCreateTeam: $("cancel-create-team"),
+  createTeamForm: $("create-team-form"),
+  newTeamName: $("new-team-name"),
+  createTeamSubmit: $("create-team-submit"),
+
+  emptyState: $("empty-state"),
+  emptyCreateBtn: $("empty-create-btn"),
+  teamView: $("team-view"),
+  teamTitle: $("team-title"),
+  teamDescription: $("team-description"),
+  wsTeamIcon: $("ws-team-icon"),
+  refreshBtn: $("refresh-team-btn"),
+
+  projectsList: $("projects-list"),
+  projectsCount: $("projects-count"),
+  showCreateProjectBtn: $("show-create-project-btn"),
+  cancelCreateProject: $("cancel-create-project"),
+  createProjectForm: $("create-project-form"),
+  newProjectName: $("new-project-name"),
+  newProjectDesc: $("new-project-desc"),
+  createProjectSubmit: $("create-project-submit"),
+
+  membersList: $("members-list"),
+  membersCount: $("members-count"),
+  showInviteBtn: $("show-invite-btn"),
+  cancelInvite: $("cancel-invite"),
+  inviteForm: $("invite-form"),
+  inviteEmail: $("invite-email"),
+  inviteRole: $("invite-role"),
+  inviteSubmit: $("invite-submit"),
+
+  auditList: $("audit-list"),
+  toast: $("toast"),
+  toastMsg: $("toast-msg"),
+  toastIcon: $("toast-icon"),
 };
 
-const elements = {
-  loginForm: document.getElementById("login-form"),
-  userIdInput: document.getElementById("user-id-input"),
-  displayUserId: document.getElementById("display-user-id"),
-  avatarInitial: document.getElementById("avatar-initial"),
-  logoutBtn: document.getElementById("logout-btn"),
-
-  teamsList: document.getElementById("teams-list"),
-  showCreateTeamBtn: document.getElementById("show-create-team-btn"),
-  createTeamForm: document.getElementById("create-team-form"),
-  newTeamName: document.getElementById("new-team-name"),
-  createTeamSubmit: document.getElementById("create-team-submit"),
-
-  emptyState: document.getElementById("empty-state"),
-  teamView: document.getElementById("team-view"),
-
-  teamTitle: document.getElementById("team-title"),
-  teamDescription: document.getElementById("team-description"),
-  refreshTeamBtn: document.getElementById("refresh-team-btn"),
-
-  projectsList: document.getElementById("projects-list"),
-  showCreateProjectBtn: document.getElementById("show-create-project-btn"),
-  createProjectForm: document.getElementById("create-project-form"),
-  newProjectName: document.getElementById("new-project-name"),
-  createProjectSubmit: document.getElementById("create-project-submit"),
-
-  membersList: document.getElementById("members-list"),
-  showInviteBtn: document.getElementById("show-invite-btn"),
-  inviteForm: document.getElementById("invite-form"),
-  inviteEmail: document.getElementById("invite-email"),
-  inviteRole: document.getElementById("invite-role"),
-  inviteSubmit: document.getElementById("invite-submit"),
-
-  auditList: document.getElementById("audit-list"),
-  toast: document.getElementById("toast"),
-  toastMsg: document.getElementById("toast-msg"),
-};
-
-// API Helpers
-async function apiCall(method, path, body = null) {
-  let finalPath = path;
-  const options = {
-    method,
-    headers: { "Content-Type": "application/json" },
-  };
-
+// ── API ────────────────────────────────────────────────────────────────
+async function api(method, path, body = null) {
+  let url = path;
+  const opts = { method, headers: { "Content-Type": "application/json" } };
   if (body) {
-    if (!body.requesterId && currentUserId) {
-      body.requesterId = currentUserId; // Auto-inject requesterId
-    }
-    options.body = JSON.stringify(body);
+    if (!body.requesterId && currentUserId) body.requesterId = currentUserId;
+    opts.body = JSON.stringify(body);
   } else if (method === "GET" && currentUserId) {
-    // Append requesterId to query string for GET requests
-    finalPath += finalPath.includes("?")
+    url += url.includes("?")
       ? `&requesterId=${currentUserId}`
       : `?requesterId=${currentUserId}`;
   }
-
-  const response = await fetch(finalPath, options);
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(data.error || "API Error");
-  }
+  const res = await fetch(url, opts);
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
   return data;
 }
 
-function showToast(message, isError = false) {
-  elements.toastMsg.textContent = message;
-  elements.toast.style.borderLeftColor = isError
-    ? "var(--danger)"
-    : "var(--primary)";
-  elements.toast.classList.remove("hidden");
-  setTimeout(() => elements.toast.classList.add("hidden"), 3000);
+// ── Toast ──────────────────────────────────────────────────────────────
+let toastTimer = null;
+function toast(msg, type = "success") {
+  el.toastMsg.textContent = msg;
+  el.toastIcon.textContent = type === "success" ? "✓" : "✕";
+  el.toastIcon.className = `toast-icon ${type}`;
+  el.toast.classList.remove("hidden");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.toast.classList.add("hidden"), 3500);
 }
 
-function setLoader(containerId, active) {
-  const container = document.getElementById(containerId);
-  if (!container) return;
-  const loader = container.querySelector(".loader");
-  if (loader) {
-    if (active) loader.classList.add("active");
-    else loader.classList.remove("active");
-  }
+// ── Skeleton → real content ────────────────────────────────────────────
+function setContent(el, html) {
+  el.innerHTML = html;
 }
 
-// Auth
-elements.loginForm.addEventListener("submit", async (e) => {
+// ── Auth ───────────────────────────────────────────────────────────────
+el.loginForm.addEventListener("submit", async (e) => {
   e.preventDefault();
-  const userId = elements.userIdInput.value.trim();
-  if (userId) {
-    currentUserId = userId;
-    elements.displayUserId.textContent = userId;
-    elements.avatarInitial.textContent = userId.charAt(0).toUpperCase();
-
-    screens.login.classList.remove("active");
-    screens.dashboard.classList.add("active");
-
-    await loadTeams();
-  }
+  const uid = el.userIdInput.value.trim();
+  if (!uid) return;
+  currentUserId = uid;
+  el.displayUserId.textContent = uid;
+  el.avatarInitial.textContent = uid.charAt(0).toUpperCase();
+  screens.login.classList.remove("active");
+  screens.dashboard.classList.add("active");
+  await loadTeams();
 });
 
-elements.logoutBtn.addEventListener("click", () => {
+el.logoutBtn.addEventListener("click", () => {
   currentUserId = null;
   currentTeamId = null;
-  elements.userIdInput.value = "";
+  currentTeamName = null;
+  el.userIdInput.value = "";
   screens.dashboard.classList.remove("active");
   screens.login.classList.add("active");
 });
 
-// Teams
+// ── Teams ──────────────────────────────────────────────────────────────
 async function loadTeams() {
   try {
-    const teams = await apiCall("GET", `/users/${currentUserId}/teams`);
-    elements.teamsList.innerHTML = "";
+    const teams = await api("GET", `/users/${currentUserId}/teams`);
+    el.teamsList.innerHTML = "";
 
     if (teams.length === 0) {
-      elements.teamsList.innerHTML =
-        '<li class="nav-item" style="opacity:0.5">No teams found</li>';
+      el.teamsList.innerHTML = `<li style="padding:8px 10px;font-size:.78rem;color:var(--text-3)">No teams yet</li>`;
+      return;
     }
 
     teams.forEach((team) => {
       const li = document.createElement("li");
-      li.className = `nav-item ${team.id === currentTeamId ? "active" : ""}`;
+      li.className = `team-nav-item${team.id === currentTeamId ? " active" : ""}`;
       li.innerHTML = `
-        <div class="team-icon">${team.name.charAt(0).toUpperCase()}</div>
-        ${team.name}
+        <div class="team-nav-avatar">${team.name.charAt(0).toUpperCase()}</div>
+        <span class="team-nav-name">${escHtml(team.name)}</span>
       `;
-      li.addEventListener("click", (e) =>
-        selectTeam(team.id, team.name, team.description, e.currentTarget),
-      );
-      elements.teamsList.appendChild(li);
+      li.addEventListener("click", (e) => selectTeam(team, e.currentTarget));
+      el.teamsList.appendChild(li);
     });
   } catch (err) {
-    showToast(err.message, true);
+    toast(err.message, "error");
   }
 }
 
-function selectTeam(id, name, description, element) {
-  currentTeamId = id;
+function selectTeam(team, navEl) {
+  currentTeamId = team.id;
+  currentTeamName = team.name;
 
-  // Update sidebar UI
   document
-    .querySelectorAll(".nav-item")
-    .forEach((el) => el.classList.remove("active"));
-  if (element) {
-    element.classList.add("active");
-  }
+    .querySelectorAll(".team-nav-item")
+    .forEach((n) => n.classList.remove("active"));
+  if (navEl) navEl.classList.add("active");
 
-  // Update Main UI
-  elements.emptyState.classList.remove("active");
-  elements.teamView.classList.add("active");
-  elements.teamTitle.textContent = name;
-  elements.teamDescription.textContent =
-    description && description.trim()
-      ? description
-      : `Team workspace · Owner: ${currentUserId}`;
+  el.emptyState.classList.add("hidden");
+  el.teamView.classList.remove("hidden");
 
-  refreshTeamData();
+  const initials = team.name.slice(0, 2).toUpperCase();
+  el.wsTeamIcon.textContent = initials.charAt(0);
+  el.teamTitle.textContent = team.name;
+  el.teamDescription.textContent =
+    team.description && team.description.trim()
+      ? team.description
+      : `Owner: ${team.owner_id || currentUserId}`;
+
+  refreshAll();
 }
 
-async function refreshTeamData() {
+function refreshAll() {
   if (!currentTeamId) return;
   loadProjects();
   loadMembers();
-  loadAuditLogs();
+  loadAuditLog();
 }
 
-elements.refreshTeamBtn.addEventListener("click", refreshTeamData);
+el.refreshBtn.addEventListener("click", refreshAll);
 
-// Create Team
-elements.showCreateTeamBtn.addEventListener("click", () => {
-  elements.createTeamForm.classList.toggle("hidden");
+// ── Create Team ────────────────────────────────────────────────────────
+el.showCreateTeamBtn.addEventListener("click", () => {
+  el.createTeamForm.classList.remove("hidden");
+  el.newTeamName.focus();
 });
-elements.createTeamSubmit.addEventListener("click", async () => {
-  const name = elements.newTeamName.value.trim();
-  if (!name) return;
+el.cancelCreateTeam.addEventListener("click", () => {
+  el.createTeamForm.classList.add("hidden");
+  el.newTeamName.value = "";
+});
+el.createTeamSubmit.addEventListener("click", async () => {
+  const name = el.newTeamName.value.trim();
+  if (!name) {
+    el.newTeamName.focus();
+    return;
+  }
   try {
-    await apiCall("POST", "/teams", { name, requesterId: currentUserId });
-    elements.newTeamName.value = "";
-    elements.createTeamForm.classList.add("hidden");
-    showToast("Team created successfully!");
-    loadTeams();
+    el.createTeamSubmit.disabled = true;
+    el.createTeamSubmit.textContent = "Creating…";
+    await api("POST", "/teams", { name, requesterId: currentUserId });
+    el.newTeamName.value = "";
+    el.createTeamForm.classList.add("hidden");
+    toast("Team created!");
+    await loadTeams();
   } catch (err) {
-    showToast(err.message, true);
+    toast(err.message, "error");
+  } finally {
+    el.createTeamSubmit.disabled = false;
+    el.createTeamSubmit.textContent = "Create";
   }
 });
 
-// Projects
+el.emptyCreateBtn.addEventListener("click", () => {
+  el.showCreateTeamBtn.click();
+});
+
+// ── Projects ───────────────────────────────────────────────────────────
+const PROJ_COLORS = [
+  "linear-gradient(135deg,#7c3aed,#5b21b6)",
+  "linear-gradient(135deg,#2563eb,#1d4ed8)",
+  "linear-gradient(135deg,#059669,#065f46)",
+  "linear-gradient(135deg,#d97706,#92400e)",
+  "linear-gradient(135deg,#dc2626,#991b1b)",
+  "linear-gradient(135deg,#0891b2,#0e7490)",
+  "linear-gradient(135deg,#9333ea,#6b21a8)",
+];
+
+function projectColor(name) {
+  let h = 0;
+  for (const c of name) h = (h * 31 + c.charCodeAt(0)) & 0xfffffff;
+  return PROJ_COLORS[h % PROJ_COLORS.length];
+}
+
 async function loadProjects() {
-  setLoader("projects-list", true);
+  setContent(el.projectsList, skeletonHTML(3));
   try {
-    const projects = await apiCall("GET", `/teams/${currentTeamId}/projects`);
-    let html = "";
+    const projects = await api("GET", `/teams/${currentTeamId}/projects`);
+    el.projectsCount.textContent = projects.length;
+
     if (projects.length === 0) {
-      html =
-        '<p class="subtitle" style="padding:8px 0">No projects yet. Create your first one!</p>';
-    } else {
-      projects.forEach((p) => {
-        const initials = (p.name || "P")
+      setContent(
+        el.projectsList,
+        `
+        <div class="panel-empty">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          <p>No projects yet.<br>Create your first project to get started.</p>
+        </div>`,
+      );
+      return;
+    }
+
+    const html = projects
+      .map((p) => {
+        const initials = p.name
           .split(" ")
           .map((w) => w[0])
           .join("")
           .toUpperCase()
           .slice(0, 2);
-        const date = p.created_at
-          ? new Date(p.created_at).toLocaleDateString("en-IN", {
-              day: "2-digit",
-              month: "short",
-              year: "numeric",
-            })
-          : "";
-        html += `
-          <div class="list-item">
-            <div class="item-info" style="display:flex;align-items:center;gap:12px">
-              <div style="width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,var(--primary),var(--accent));display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:white;flex-shrink:0">${initials}</div>
-              <div>
-                <h4>${p.name}</h4>
-                <p>Created by <strong>${p.created_by || "Unknown"}</strong>${date ? " · " + date : ""}</p>
-              </div>
+        const date = p.created_at ? fmtDate(p.created_at) : "";
+        const grad = projectColor(p.name);
+        return `
+        <div class="project-card">
+          <div class="project-avatar" style="background:${grad}">${initials}</div>
+          <div class="project-info">
+            <div class="project-name">${escHtml(p.name)}</div>
+            <div class="project-meta">
+              By <strong>${escHtml(p.created_by || "Unknown")}</strong>${date ? " · " + date : ""}
             </div>
-            <span class="badge viewer" style="background:rgba(59,130,246,0.15);color:#93c5fd;border-color:rgba(59,130,246,0.3)">Active</span>
           </div>
-        `;
-      });
-    }
-    elements.projectsList.innerHTML = '<div class="loader"></div>' + html;
+          <span class="status-chip status-active">Active</span>
+        </div>`;
+      })
+      .join("");
+
+    setContent(el.projectsList, html);
   } catch (err) {
-    elements.projectsList.innerHTML =
-      '<div class="loader"></div><p class="subtitle" style="color:var(--danger)">Failed to load projects</p>';
+    setContent(
+      el.projectsList,
+      `<div class="panel-empty"><p style="color:var(--red)">Failed to load projects</p></div>`,
+    );
   }
-  setLoader("projects-list", false);
 }
 
-elements.showCreateProjectBtn.addEventListener("click", () => {
-  elements.createProjectForm.classList.toggle("hidden");
+el.showCreateProjectBtn.addEventListener("click", () => {
+  el.createProjectForm.classList.remove("hidden");
+  el.newProjectName.focus();
 });
-elements.createProjectSubmit.addEventListener("click", async () => {
-  const name = elements.newProjectName.value.trim();
-  if (!name) return;
+el.cancelCreateProject.addEventListener("click", () => {
+  el.createProjectForm.classList.add("hidden");
+  el.newProjectName.value = "";
+  el.newProjectDesc.value = "";
+});
+el.createProjectSubmit.addEventListener("click", async () => {
+  const name = el.newProjectName.value.trim();
+  const description = el.newProjectDesc.value.trim();
+  if (!name) {
+    el.newProjectName.focus();
+    return;
+  }
   try {
-    await apiCall("POST", `/teams/${currentTeamId}/projects`, {
+    el.createProjectSubmit.disabled = true;
+    el.createProjectSubmit.textContent = "Creating…";
+    await api("POST", `/teams/${currentTeamId}/projects`, {
       name,
+      description,
       requesterId: currentUserId,
     });
-    elements.newProjectName.value = "";
-    elements.createProjectForm.classList.add("hidden");
-    showToast("Project created!");
+    el.newProjectName.value = "";
+    el.newProjectDesc.value = "";
+    el.createProjectForm.classList.add("hidden");
+    toast(`Project "${name}" created!`);
     loadProjects();
-    loadAuditLogs();
+    loadAuditLog();
   } catch (err) {
-    showToast(err.message, true);
+    toast(err.message, "error");
+  } finally {
+    el.createProjectSubmit.disabled = false;
+    el.createProjectSubmit.textContent = "Create Project";
   }
 });
 
-// Members
+// ── Members ────────────────────────────────────────────────────────────
 async function loadMembers() {
-  setLoader("members-list", true);
+  setContent(el.membersList, skeletonHTML(2));
   try {
-    const members = await apiCall("GET", `/teams/${currentTeamId}/members`);
-    let html = "";
+    const members = await api("GET", `/teams/${currentTeamId}/members`);
+    el.membersCount.textContent = members.length;
+
     if (members.length === 0) {
-      html = '<p class="subtitle" style="padding:8px 0">No members yet.</p>';
-    } else {
-      members.forEach((m) => {
-        const isOwner = m.role === "owner";
-        const initials = (m.user_id || "?").charAt(0).toUpperCase();
-        const roleLabel = m.role
-          ? m.role.charAt(0).toUpperCase() + m.role.slice(1)
-          : "Member";
-        html += `
-          <div class="list-item">
-            <div class="item-info" style="display:flex;align-items:center;gap:12px">
-              <div class="avatar" style="width:36px;height:36px;font-size:14px;border-radius:10px;flex-shrink:0">${initials}</div>
-              <div>
-                <h4>${m.user_id}</h4>
-                <p>${isOwner ? "Team Owner" : "Team Member"}</p>
-              </div>
-            </div>
-            <span class="badge ${m.role || "viewer"}">${roleLabel}</span>
-          </div>
-        `;
-      });
+      setContent(
+        el.membersList,
+        `<div class="panel-empty"><p>No members found.</p></div>`,
+      );
+      return;
     }
-    elements.membersList.innerHTML = '<div class="loader"></div>' + html;
+
+    const html = members
+      .map((m) => {
+        const role = m.role || "member";
+        const label =
+          role === "owner"
+            ? "Team Owner"
+            : role === "admin"
+              ? "Administrator"
+              : "Member";
+        const initial = (m.user_id || "?").charAt(0).toUpperCase();
+        return `
+        <div class="member-card">
+          <div class="member-avatar">${initial}</div>
+          <div class="member-info">
+            <div class="member-id">${escHtml(m.user_id)}</div>
+            <div class="member-label">${label}</div>
+          </div>
+          <span class="role-badge role-${role}">${role}</span>
+        </div>`;
+      })
+      .join("");
+
+    setContent(el.membersList, html);
   } catch (err) {
-    elements.membersList.innerHTML =
-      '<div class="loader"></div><p class="subtitle" style="color:var(--danger)">Failed to load members</p>';
+    setContent(
+      el.membersList,
+      `<div class="panel-empty"><p style="color:var(--red)">Failed to load members</p></div>`,
+    );
   }
-  setLoader("members-list", false);
 }
 
-elements.showInviteBtn.addEventListener("click", () => {
-  elements.inviteForm.classList.toggle("hidden");
+el.showInviteBtn.addEventListener("click", () => {
+  el.inviteForm.classList.remove("hidden");
+  el.inviteEmail.focus();
 });
-elements.inviteSubmit.addEventListener("click", async () => {
-  const email = elements.inviteEmail.value.trim();
-  const role = elements.inviteRole.value;
-  if (!email) return;
+el.cancelInvite.addEventListener("click", () => {
+  el.inviteForm.classList.add("hidden");
+  el.inviteEmail.value = "";
+});
+el.inviteSubmit.addEventListener("click", async () => {
+  const email = el.inviteEmail.value.trim();
+  const role = el.inviteRole.value;
+  if (!email) {
+    el.inviteEmail.focus();
+    return;
+  }
   try {
-    const res = await apiCall("POST", `/teams/${currentTeamId}/invite`, {
+    el.inviteSubmit.disabled = true;
+    el.inviteSubmit.textContent = "Sending…";
+    const res = await api("POST", `/teams/${currentTeamId}/invite`, {
       email,
       role,
       requesterId: currentUserId,
     });
-    elements.inviteEmail.value = "";
-    elements.inviteForm.classList.add("hidden");
+    el.inviteEmail.value = "";
+    el.inviteForm.classList.add("hidden");
 
-    // Simulate Email Delivery
-    const modal = document.getElementById("email-modal");
-    document.getElementById("email-to-address").textContent = `To: ${email}`;
-    document.getElementById("email-token-link").textContent =
+    // Show email modal
+    $("email-to-address").textContent = `To: ${email}`;
+    $("email-token-link").textContent =
       `http://localhost:3000/invitations/${res.invitationId}/respond`;
-    modal.classList.add("active");
+    $("email-modal").classList.remove("hidden");
 
-    showToast(`Invitation sent to ${email}`);
-    loadAuditLogs();
+    toast(`Invitation sent to ${email}`);
+    loadAuditLog();
   } catch (err) {
-    showToast(err.message, true);
+    toast(err.message, "error");
+  } finally {
+    el.inviteSubmit.disabled = false;
+    el.inviteSubmit.textContent = "Send Invite";
   }
 });
 
-document.getElementById("close-email-btn").addEventListener("click", () => {
-  document.getElementById("email-modal").classList.remove("active");
+$("close-email-btn").addEventListener("click", () =>
+  $("email-modal").classList.add("hidden"),
+);
+$("email-modal").addEventListener("click", (e) => {
+  if (e.target === $("email-modal")) $("email-modal").classList.add("hidden");
 });
 
-// Audit Logs
-function formatAction(action) {
-  const labels = {
-    create: "🏗️ Team Created",
-    invite: "📧 Member Invited",
-    join: "✅ Member Joined",
-    remove_member: "🚫 Member Removed",
-    add_role: "🏷️ Role Assigned",
-    create_project: "📁 Project Created",
-    update_permissions: "🔐 Permissions Updated",
-  };
-  return labels[action] || action;
-}
+// ── Audit Log ──────────────────────────────────────────────────────────
+const ACTION_META = {
+  create: { label: "Team Created", dot: "dot-create" },
+  create_project: { label: "Project Created", dot: "dot-project" },
+  invite: { label: "Member Invited", dot: "dot-invite" },
+  join: { label: "Member Joined", dot: "dot-join" },
+  remove_member: { label: "Member Removed", dot: "dot-remove" },
+  add_role: { label: "Role Assigned", dot: "dot-invite" },
+  update_permissions: { label: "Permissions Updated", dot: "dot-project" },
+};
 
-async function loadAuditLogs() {
-  setLoader("audit-list", true);
+async function loadAuditLog() {
+  setContent(el.auditList, skeletonHTML(3));
   try {
-    const logs = await apiCall("GET", `/teams/${currentTeamId}/audit?limit=10`);
-    let html;
+    const logs = await api("GET", `/teams/${currentTeamId}/audit?limit=20`);
+
     if (logs.length === 0) {
-      html =
-        '<p class="subtitle" style="padding:16px 24px">No recent activity.</p>';
-    } else {
-      html = `<table>
-        <thead><tr>
-          <th>Action</th>
-          <th>Performed By</th>
-          <th>Details</th>
-          <th>Time</th>
-        </tr></thead>
-        <tbody>`;
-      logs.forEach((l) => {
-        const date = l.at
-          ? new Date(l.at).toLocaleString("en-IN", {
-              day: "2-digit",
-              month: "short",
-              year: "numeric",
-              hour: "2-digit",
-              minute: "2-digit",
-            })
-          : "-";
-        const actor = l.performed_by || "-";
+      setContent(
+        el.auditList,
+        `<div class="panel-empty"><p>No activity recorded yet.</p></div>`,
+      );
+      return;
+    }
+
+    const rows = logs
+      .map((l) => {
+        const meta = ACTION_META[l.action] || {
+          label: l.action,
+          dot: "dot-default",
+        };
+        const actor = l.performed_by || "—";
+        const time = l.at ? fmtDateTime(l.at) : "—";
+
         const details = l.details
           ? Object.entries(l.details)
               .filter(([k]) => k !== "emailHash" && k !== "token")
-              .map(([k, v]) => `${k}: <strong>${v}</strong>`)
-              .join(", ")
-          : "-";
-        html += `<tr>
-          <td>${formatAction(l.action)}</td>
-          <td style="font-family:monospace;font-size:0.85rem">${actor}</td>
-          <td style="color:var(--text-secondary);font-size:0.85rem">${details}</td>
-          <td style="color:var(--text-secondary);font-size:0.8rem;white-space:nowrap">${date}</td>
+              .map(([k, v]) => `${k}: <strong>${escHtml(String(v))}</strong>`)
+              .join(" · ")
+          : "—";
+
+        return `
+        <tr>
+          <td>
+            <div class="audit-action">
+              <span class="audit-dot ${meta.dot}"></span>
+              ${meta.label}
+            </div>
+          </td>
+          <td><span class="audit-actor">${escHtml(actor)}</span></td>
+          <td><span class="audit-detail">${details}</span></td>
+          <td><span class="audit-time">${time}</span></td>
         </tr>`;
-      });
-      html += "</tbody></table>";
-    }
-    elements.auditList.innerHTML = '<div class="loader"></div>' + html;
+      })
+      .join("");
+
+    setContent(
+      el.auditList,
+      `
+      <table class="audit-table">
+        <thead>
+          <tr>
+            <th>Action</th>
+            <th>Performed By</th>
+            <th>Details</th>
+            <th>Timestamp</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>`,
+    );
   } catch (err) {
-    elements.auditList.innerHTML =
-      '<div class="loader"></div><p class="subtitle" style="color:var(--danger)">Failed to load logs</p>';
+    setContent(
+      el.auditList,
+      `<div class="panel-empty"><p style="color:var(--red)">Failed to load activity log</p></div>`,
+    );
   }
-  setLoader("audit-list", false);
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function fmtDate(iso) {
+  return new Date(iso).toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function fmtDateTime(iso) {
+  return new Date(iso).toLocaleString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
+
+function skeletonHTML(n) {
+  return `<div class="skeleton-list">${Array(n).fill('<div class="skeleton-item"></div>').join("")}</div>`;
 }
