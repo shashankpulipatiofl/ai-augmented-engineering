@@ -48,6 +48,7 @@ const elements = {
 
 // API Helpers
 async function apiCall(method, path, body = null) {
+  let finalPath = path;
   const options = {
     method,
     headers: { "Content-Type": "application/json" },
@@ -58,9 +59,14 @@ async function apiCall(method, path, body = null) {
       body.requesterId = currentUserId; // Auto-inject requesterId
     }
     options.body = JSON.stringify(body);
+  } else if (method === "GET" && currentUserId) {
+    // Append requesterId to query string for GET requests
+    finalPath += finalPath.includes("?")
+      ? `&requesterId=${currentUserId}`
+      : `?requesterId=${currentUserId}`;
   }
 
-  const response = await fetch(path, options);
+  const response = await fetch(finalPath, options);
   const data = await response.json();
 
   if (!response.ok) {
@@ -130,8 +136,8 @@ async function loadTeams() {
         <div class="team-icon">${team.name.charAt(0).toUpperCase()}</div>
         ${team.name}
       `;
-      li.addEventListener("click", () =>
-        selectTeam(team.id, team.name, team.description),
+      li.addEventListener("click", (e) =>
+        selectTeam(team.id, team.name, team.description, e.currentTarget),
       );
       elements.teamsList.appendChild(li);
     });
@@ -140,14 +146,16 @@ async function loadTeams() {
   }
 }
 
-function selectTeam(id, name, description) {
+function selectTeam(id, name, description, element) {
   currentTeamId = id;
 
   // Update sidebar UI
   document
     .querySelectorAll(".nav-item")
     .forEach((el) => el.classList.remove("active"));
-  event.currentTarget.classList.add("active");
+  if (element) {
+    element.classList.add("active");
+  }
 
   // Update Main UI
   elements.emptyState.classList.remove("active");

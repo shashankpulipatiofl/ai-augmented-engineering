@@ -1,12 +1,25 @@
 // src/routes/projects.js
 import { AppError, toAppError } from "../utils/error.js";
+import {
+  createProject as dbCreateProject,
+  listProjects as dbListProjects,
+} from "../db.js";
 
-// Stub implementations for project management (to be replaced with real DB logic)
-export const createProject = async ({ requesterId, teamId, name }) => {
+export const createProject = async ({
+  requesterId,
+  teamId,
+  name,
+  description,
+}) => {
   try {
     if (!name) throw new AppError("Project name required", 400);
-    // Example stub: generate a simple ID
-    return { status: 201, project: { id: "proj-" + Date.now(), name, teamId } };
+    const project = await dbCreateProject({
+      requesterId,
+      teamId,
+      name,
+      description,
+    });
+    return { status: 201, project };
   } catch (err) {
     const appErr = toAppError(err);
     return { status: appErr.status, error: appErr.message };
@@ -15,8 +28,8 @@ export const createProject = async ({ requesterId, teamId, name }) => {
 
 export const listProjects = async ({ requesterId, teamId }) => {
   try {
-    // Stub: return empty array; real implementation would query DB
-    return { status: 200, projects: [] };
+    const projects = await dbListProjects({ teamId });
+    return { status: 200, projects };
   } catch (err) {
     const appErr = toAppError(err);
     return { status: appErr.status, error: appErr.message };

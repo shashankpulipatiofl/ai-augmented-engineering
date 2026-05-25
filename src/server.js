@@ -96,8 +96,9 @@ app.delete("/teams/:teamId/member/:memberId", async (req, res) => {
 
 app.get("/teams/:teamId/audit", async (req, res) => {
   try {
-    const { startDate, endDate, limit } = req.query;
+    const { startDate, endDate, limit, requesterId } = req.query;
     const result = await getAuditLog({
+      requesterId,
       teamId: req.params.teamId,
       startDate,
       endDate,

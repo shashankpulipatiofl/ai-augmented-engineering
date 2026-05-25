@@ -63,6 +63,14 @@ const init = async () => {
       team_id INTEGER PRIMARY KEY REFERENCES teams(id) ON DELETE CASCADE,
       permission_matrix JSONB
     );
+    CREATE TABLE IF NOT EXISTS projects (
+      id SERIAL PRIMARY KEY,
+      team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      description TEXT,
+      created_by TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT now()
+    );
   `);
 };
 export const dbReady = init();
@@ -278,11 +286,18 @@ export const getAuditLog = async ({
   endDate,
   limit = 50,
 }) => {
-  const membership = await pool.query(
-    "SELECT 1 FROM team_members WHERE team_id = $1 AND user_id = $2",
-    [teamId, requesterId],
-  );
-  if (membership.rowCount === 0) throw new AppError("Access denied", 403);
+  // Check access: must be a member OR the team owner
+  if (requesterId) {
+    const team = await getTeamById(teamId);
+    const isOwner = team && String(team.owner_id) === String(requesterId);
+    if (!isOwner) {
+      const membership = await pool.query(
+        "SELECT 1 FROM team_members WHERE team_id = $1 AND user_id = $2",
+        [teamId, requesterId],
+      );
+      if (membership.rowCount === 0) throw new AppError("Access denied", 403);
+    }
+  }
 
   let query = `SELECT * FROM audit_log WHERE team_id = $1`;
   const params = [teamId];
@@ -295,7 +310,7 @@ export const getAuditLog = async ({
     query += ` AND at <= $${params.length}`;
   }
   query += ` ORDER BY at DESC LIMIT $${params.length + 1}`;
-  params.push(limit);
+  params.push(limit || 50);
   const res = await pool.query(query, params);
   return res.rows;
 };
@@ -327,9 +342,47 @@ export const updatePermissions = async ({
   return { permissions: perm.rows[0].permission_matrix };
 };
 
+// ---------- Projects ----------
+export const createProject = async ({
+  requesterId,
+  teamId,
+  name,
+  description = "",
+}) => {
+  const res = await pool.query(
+    "INSERT INTO projects (team_id, name, description, created_by) VALUES ($1, $2, $3, $4) RETURNING *",
+    [teamId, name, description, requesterId],
+  );
+  await logAudit({
+    teamId,
+    action: "create_project",
+    performedBy: requesterId,
+    details: { name },
+  });
+  return res.rows[0];
+};
+
+export const listProjects = async ({ teamId }) => {
+  const res = await pool.query(
+    "SELECT * FROM projects WHERE team_id = $1 ORDER BY created_at DESC",
+    [teamId],
+  );
+  return res.rows;
+};
+
+// ---------- Members ----------
+export const listTeamMembers = async ({ teamId }) => {
+  const res = await pool.query(
+    "SELECT user_id, role FROM team_members WHERE team_id = $1 ORDER BY role",
+    [teamId],
+  );
+  return res.rows;
+};
+
 // ---------- Test Utilities ----------
 export const clearAll = async () => {
   const tables = [
+    "projects",
     "permissions",
     "audit_log",
     "team_members",
@@ -365,6 +418,9 @@ export default {
   assignRoleToMember,
   getAuditLog,
   updatePermissions,
+  createProject,
+  listProjects,
+  listTeamMembers,
   clearAll,
   hashValue,
   verifyHash,
