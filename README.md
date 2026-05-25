@@ -25,7 +25,7 @@ A production-ready, enterprise-grade backend service built for secure, scalable 
 
 ### 4. Containerization & Infrastructure
 
-- **Dockerized Environment:** `docker-compose` setup for immediate, reproducible local development and testing environments (Node.js API + MongoDB).
+- **Dockerized Environment:** `docker-compose` setup for immediate, reproducible local development and testing environments (Node.js API + PostgreSQL).
 - **Environment Configuration:** Strict separation of environment variables (`.env.example`) to prevent secret leakage.
 
 ## 🏗️ Architecture
@@ -34,17 +34,17 @@ This project is built using a layered architecture to ensure separation of conce
 
 - **Routes Layer:** Handles HTTP requests, authentication verification, and route-level validation.
 - **Controller/Service Layer:** Contains the core business logic, decoupled from the HTTP transport.
-- **Data Access Layer:** Mongoose models and database interaction logic.
+- **Data Access Layer:** PostgreSQL client pool (`src/db.js`) and database query logic.
 - **Cross-Cutting Concerns:** Shared middleware for error handling (`src/utils/error.js`), permission checking (`src/permissions/check.js`), and input validation.
 
 Check out the [DESIGN.md](./DESIGN.md) and [ARCHITECTURE.md](./ARCHITECTURE.md) for deeper system-level diagrams and decisions.
 
 ## 🛠️ Tech Stack
 
-- **Runtime:** Node.js
+- **Runtime:** Node.js (v18+)
 - **Framework:** Express.js
-- **Database:** MongoDB (via Mongoose)
-- **Testing:** Jest & Supertest
+- **Database:** PostgreSQL (via pg)
+- **Testing:** Node.js Native Test Runner (node --test) & pg-mem (for tests)
 - **Linting:** ESLint
 - **CI/CD:** GitHub Actions
 - **Containerization:** Docker & Docker Compose
